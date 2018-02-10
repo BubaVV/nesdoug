@@ -18,7 +18,8 @@ endif
 
 $(NAME).nes: $(NAME).o reset.o nes.cfg
 	$(LD65) -C nes.cfg -o $(NAME).nes reset.o $(NAME).o nes.lib
-	$(RM) *.o
+#	Cleaning of *.o spoils lesson4 compiling. Better move it to clean target
+#	$(RM) *.o
 
 reset.o: reset.s
 	$(CA65) reset.s
@@ -30,5 +31,6 @@ $(NAME).s: $(NAME).c
 	$(CC65) -Oi $(NAME).c --add-source
 
 clean:
-	$(RM) $(NAME).nes
+	$(RM) *.nes
 	$(RM) $(NAME).s
+	$(RM) *.o
