@@ -1,0 +1,13 @@
+NAME = lesson7
+include ../general/general.mk
+
+$(NAME).nes: $(NAME).o reset.o asm4c.o nes.cfg
+	$(LD65) -C nes.cfg -o $(NAME).nes reset.o $(NAME).o asm4c.o nes.lib
+
+asm4c.o: asm4c.s
+	$(CA65) asm4c.s
+
+clean:
+	$(RM) *.nes
+	$(RM) $(NAME).s
+	$(RM) *.o
