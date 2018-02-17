@@ -24,6 +24,9 @@ $(NAME).nes: $(NAME).o reset.o nes.cfg
 reset.o: reset.s
 	$(CA65) reset.s
 
+asm4c.o: asm4c.s
+	$(CA65) asm4c.s
+
 $(NAME).o: $(NAME).s
 	$(CA65) $(NAME).s
 
