@@ -1,0 +1,270 @@
+;;;; this is a version where y flipping works
+;;;; sprite objects assumed to be...
+;;;; # sprites
+;;;; each sprite 4 bytes -- Y,tile,attr,X
+;;;; then flipped X, 1 byte per tile
+;;;; then flipped Y, 1 byte per tile !!
+
+_Draw_Sprites:
+
+;object = struct = {type, direction, Y, X, delay, move, count} 
+;this takes in the address of the object, which we use to index
+;to a table of addresses of drawing lists (animation frames)
+;first element of table = how many sprites object has in this frame
+
+;max size = 64 sprites (of course)
+
+	stx Pointer_High ;x = high byte address
+	sta Pointer_Low ;a = low byte address
+	
+		; this is a pointer to a struct
+		; unsigned char anime; // for drawing object to screen
+		; unsigned char dir;	// direction, for flipping 0 = L, no x flip
+		; unsigned char Y;	// top side, if = 0 = off
+		; unsigned char X;	// left side
+		; unsigned char delay; // wait to start moves
+		; unsigned char type;	// type of object
+		; unsigned char move;	// which move to do
+		; unsigned char count; // how far along on the move are we
+		
+	
+_Draw_Sprites_B:
+	ldy #2 ;Y position
+	lda (Pointer_Low), y
+	sta _temp
+	iny ;3 = X position
+	lda (Pointer_Low), y ;X
+	sta _temp2
+	
+	ldy #0
+	lda (Pointer_Low), y ; what animation / set of tiles ?
+	asl a ;times 2
+	tax
+	lda Address_Animation, x
+	sta Pointer2_Low
+	lda Address_Animation+1, x
+	sta Pointer2_High
+		;pointer 2, now points to the address of the set of tiles
+	
+	; ldy #0 ;already zero
+	lda (Pointer2_Low), y
+	sta Sprite_Count ;first byte = how many sprites to draw
+	
+	; increase the address by one...this part is so 64 sprites can work
+	inc Pointer2_Low
+	bne :+
+	inc Pointer2_High
+:
+	
+;note, I'm not checking for overflow, your game will have to keep the sprite count to 64
+
+	;ldy #0 already is 0
+	ldx _Sprite_Index ;where in the sprite buffer should we be writing to?
+	lda Sprite_Count
+	sta index
+@loop:
+	lda (Pointer2_Low), y ;relative y coordinates
+	sta _SPRITES, x 
+	inx
+	iny
+	
+	lda (Pointer2_Low), y ;tile
+	sta _SPRITES, x 
+	inx
+	iny
+	
+	lda (Pointer2_Low), y ;attrib
+	sta _SPRITES, x 
+	inx
+	iny
+	
+	lda (Pointer2_Low), y ;relative x coordinates
+	sta _SPRITES, x 
+	inx
+	iny
+	dec index
+	bne @loop
+	
+	
+	
+	
+	
+	
+;check x flipping...
+;I only wrote this for x flipping only, but it could be modified for y flipping...see y_flip.txt
+
+	ldy #1 ; are we flipping ?
+	lda (Pointer_Low), y
+		sta _temp3
+	bne :+
+	jmp Skip_Flip
+:
+	and #$40
+	beq Check_Y_Flip
+	
+;YES, we're flipping X
+	lda Pointer2_High
+	sta Pointer_High ; reusing the other pointer
+	ldx Sprite_Count
+	lda Times4, x
+	bne :+
+	inc Pointer_High ; if sprite count 64, times 4 = 0
+:
+	clc
+	adc Pointer2_Low
+	sta Pointer_Low
+	bcc :+
+	inc Pointer_High
+:
+;; pointer 1 should now point to just past the regular sprite data, to the flipped x values
+
+	ldy #0
+	ldx _Sprite_Index
+	lda Sprite_Count
+	sta index
+@loop2:
+	lda _SPRITES+2, x ; attributes
+	eor #$40
+	sta _SPRITES+2, x ; attributes = h flip
+	
+	lda (Pointer_Low), y ;now points to the x flipped part
+	sta _SPRITES+3, x ; x value
+	inx
+	inx
+	inx
+	inx
+	iny
+	dec index
+	bne @loop2
+	
+	
+	
+	
+	
+Check_Y_Flip:
+	lda _temp3 ; = flipping data
+	and #$80
+	beq Skip_Flip
+	
+	
+	lda Pointer2_High
+	sta Pointer_High ; reusing the other pointer
+	ldx Sprite_Count
+	lda Times4, x
+	bne :+
+	inc Pointer_High ; if sprite count 64, times 4 = 0
+:
+	clc
+	adc Pointer2_Low
+	sta Pointer_Low
+	bcc :+
+	inc Pointer_High
+:
+;; pointer 1 should now point to just past the regular sprite data, to the flipped x values
+	;lda Pointer_Low ;already is this
+	clc
+	adc Sprite_Count
+	sta Pointer_Low
+	bcc :+
+	inc Pointer_High
+:
+;; pointer 1 should now point to further past, to the flipped y values
+
+
+	ldy #0
+	ldx _Sprite_Index
+	lda Sprite_Count
+	sta index
+@loop4:
+	lda _SPRITES+2, x ; attributes
+	eor #$80
+	sta _SPRITES+2, x ; attributes = v flip
+	
+	lda (Pointer_Low), y ;now points to the x flipped part
+	sta _SPRITES, x ; y value
+	inx
+	inx
+	inx
+	inx
+	iny
+	dec index
+	bne @loop4
+	
+	
+	
+	
+	
+	
+	
+Skip_Flip:
+
+
+; now some math to add object's x/y values to the relative values
+; also, added a little bit to push the sprite offscreen, if it's value is overflowing / underflowing
+; also, i modified this so you can have relative coordinates that are negative...$fc for -4
+
+	ldx _Sprite_Index
+	lda Sprite_Count
+	sta index
+loop3:
+
+;now add the y value, put off screen if overflow
+	lda _SPRITES, x ;y
+	bpl Y_Pos
+Y_Neg:
+	clc
+	adc _temp ;y
+	bcs Y_Done
+	lda #$f8 ; offscreen value
+	bne Y_Done
+	
+Y_Pos:
+	clc
+	adc _temp ;y
+	bcc Y_Done
+	lda #$f8 ; offscreen value
+
+Y_Done:
+	sta _SPRITES, x ;y
+
+
+	
+;now add the x value, put off screen if overflow
+
+	lda _SPRITES+3, x ;x
+	bpl X_Pos
+X_Neg:
+	clc
+	adc _temp2 ;x
+	sta _SPRITES+3, x ;x
+	bcs X_Done
+	lda #$f8
+	sta _SPRITES, x ; put offscreen
+	jmp X_Done
+	
+X_Pos:
+	clc
+	adc _temp2 ;x
+	sta _SPRITES+3, x ;x
+	bcc X_Done
+	lda #$f8
+	sta _SPRITES, x ; put offscreen
+
+X_Done:
+	inx
+	inx
+	inx
+	inx
+	dec index
+	bne loop3
+	
+	
+
+	
+;add to the index
+	ldx Sprite_Count
+	lda Times4, x
+	clc
+	adc _Sprite_Index
+	sta _Sprite_Index
+	rts	
